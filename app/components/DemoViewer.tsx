@@ -13,6 +13,7 @@ export default function DemoViewer({ demo, linkId, vars = {} }: DemoViewerProps)
   const [currentStep, setCurrentStep]     = useState(0)
   const [activeHotspot, setActiveHotspot] = useState<Hotspot | null>(null)
   const [transitioning, setTransitioning] = useState(false)
+  const [finished, setFinished]           = useState(false)
 
   const sessionRef    = useRef<string | null>(null)
   const stepStartTime = useRef<number>(Date.now())
@@ -20,6 +21,7 @@ export default function DemoViewer({ demo, linkId, vars = {} }: DemoViewerProps)
 
   const step  = demo.steps[currentStep]
   const total = demo.steps.length
+  const isLast = currentStep === total - 1
 
   function t(text: string | undefined): string {
     if (!text) return ''
@@ -39,7 +41,6 @@ export default function DemoViewer({ demo, linkId, vars = {} }: DemoViewerProps)
     const storageKey = `demoflow_ses_${demo.id}`
     const existing   = sessionStorage.getItem(storageKey)
     if (existing) { sessionRef.current = existing; return }
-
     fetch('/api/track', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -70,8 +71,10 @@ export default function DemoViewer({ demo, linkId, vars = {} }: DemoViewerProps)
     setTimeout(() => { setCurrentStep(index); setTransitioning(false) }, 220)
   }, [currentStep, transitioning, total, track])
 
-  const prev = () => goTo(Math.max(0, currentStep - 1))
-  const next = () => goTo(Math.min(total - 1, currentStep + 1))
+  function handleNext() {
+    if (isLast) { setFinished(true); return }
+    goTo(currentStep + 1)
+  }
 
   function handleHotspotToggle(hs: Hotspot) {
     const isOpening = activeHotspot?.id !== hs.id
@@ -81,17 +84,38 @@ export default function DemoViewer({ demo, linkId, vars = {} }: DemoViewerProps)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') next()
-      if (e.key === 'ArrowLeft')  prev()
-      if (e.key === 'Escape')     setActiveHotspot(null)
+      if (e.key === 'ArrowRight') handleNext()
+      if (e.key === 'ArrowLeft' && currentStep > 0) goTo(currentStep - 1)
+      if (e.key === 'Escape') setActiveHotspot(null)
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep, transitioning])
 
+  // Écran de fin
+  if (finished) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", color: '#FAFAFA', gap: 24, padding: 24 }}>
+        <div style={{ width: 64, height: 64, background: 'rgba(79,70,229,0.15)', border: '1px solid rgba(79,70,229,0.3)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28 }}>✓</div>
+        <div style={{ textAlign: 'center' }}>
+          <h2 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.04em', marginBottom: 8 }}>Tu as terminé la démo !</h2>
+          <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>Tu as exploré les {total} étapes de <strong style={{ color: '#fff' }}>{t(demo.title)}</strong>.</p>
+        </div>
+        <button
+          onClick={() => { setFinished(false); goTo(0) }}
+          style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '12px 24px', color: 'rgba(255,255,255,0.6)', fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}
+        >
+          ← Recommencer depuis le début
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', flexDirection: 'column', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+
+      {/* Header */}
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 28px', borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'rgba(20,20,20,0.8)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 28, height: 28, background: '#4F46E5', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -102,32 +126,65 @@ export default function DemoViewer({ demo, linkId, vars = {} }: DemoViewerProps)
           </div>
           <span style={{ color: '#FAFAFA', fontWeight: 700, fontSize: 14, letterSpacing: '-0.02em' }}>{t(demo.title)}</span>
         </div>
-        <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>{currentStep + 1} / {total}</span>
+
+        {/* Barre de progression */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {demo.steps.map((_, i) => (
+              <div key={i} style={{ width: i === currentStep ? 20 : 6, height: 6, borderRadius: 100, background: i <= currentStep ? '#4F46E5' : 'rgba(255,255,255,0.12)', transition: 'all 0.3s cubic-bezier(0.34,1.56,0.64,1)', cursor: i < currentStep ? 'pointer' : 'default' }} onClick={() => i < currentStep && goTo(i)} />
+            ))}
+          </div>
+          <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12 }}>{currentStep + 1}/{total}</span>
+        </div>
       </header>
 
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 24px', gap: 28 }}>
-        <div style={{ position: 'relative', maxWidth: '900px', width: '100%', opacity: transitioning ? 0 : 1, transform: transitioning ? 'translateY(8px)' : 'translateY(0)', transition: 'opacity 0.22s ease, transform 0.22s ease' }} onClick={() => setActiveHotspot(null)}>
+      {/* Contenu principal */}
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 24px 120px', gap: 24 }}>
+
+        {/* Screenshot */}
+        <div
+          style={{ position: 'relative', maxWidth: '900px', width: '100%', opacity: transitioning ? 0 : 1, transform: transitioning ? 'translateY(8px)' : 'translateY(0)', transition: 'opacity 0.22s ease, transform 0.22s ease' }}
+          onClick={() => setActiveHotspot(null)}
+        >
           <img src={step.screenshotUrl} alt={`Étape ${currentStep + 1}`} style={{ width: '100%', display: 'block', borderRadius: 12, boxShadow: '0 32px 80px rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.06)' }} />
           {step.hotspots.map((hs) => (
             <HotspotDot key={hs.id} hotspot={hs} isActive={activeHotspot?.id === hs.id} onToggle={handleHotspotToggle} interpolate={t} />
           ))}
         </div>
 
-        <nav style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button onClick={prev} disabled={currentStep === 0} style={{ width: 44, height: 44, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)', color: currentStep === 0 ? 'rgba(255,255,255,0.2)' : '#FAFAFA', cursor: currentStep === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>←</button>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            {demo.steps.map((_, i) => (
-              <button key={i} onClick={() => goTo(i)} style={{ width: i === currentStep ? 24 : 8, height: 8, borderRadius: 100, border: 'none', background: i === currentStep ? '#4F46E5' : 'rgba(255,255,255,0.18)', cursor: 'pointer', transition: 'all 0.25s cubic-bezier(0.34,1.56,0.64,1)', padding: 0 }} />
-            ))}
-          </div>
-          <button onClick={next} disabled={currentStep === total - 1} style={{ width: 44, height: 44, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.12)', background: currentStep === total - 1 ? 'rgba(255,255,255,0.03)' : '#4F46E5', color: currentStep === total - 1 ? 'rgba(255,255,255,0.2)' : '#fff', cursor: currentStep === total - 1 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>→</button>
-        </nav>
-        <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11, textAlign: 'center' }}>← → pour naviguer · ESC pour fermer les tooltips</p>
+        {/* Label de l'étape */}
+        <div style={{ textAlign: 'center', opacity: transitioning ? 0 : 1, transition: 'opacity 0.22s ease' }}>
+          <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>Étape {currentStep + 1} sur {total}</p>
+        </div>
       </main>
 
-      <footer style={{ textAlign: 'center', padding: '12px 24px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-        <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 11 }}>Créé avec <strong style={{ color: 'rgba(255,255,255,0.35)' }}>DemoFlow</strong></span>
-      </footer>
+      {/* Barre de navigation fixe en bas */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '16px 24px', background: 'rgba(8,8,8,0.9)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 200 }}>
+
+        {/* Bouton précédent */}
+        <button
+          onClick={() => currentStep > 0 && goTo(currentStep - 1)}
+          disabled={currentStep === 0}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: currentStep === 0 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.6)', fontSize: 14, cursor: currentStep === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}
+        >
+          ← Précédent
+        </button>
+
+        {/* Centre — dots cliquables */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {demo.steps.map((_, i) => (
+            <button key={i} onClick={() => goTo(i)} style={{ width: i === currentStep ? 24 : 8, height: 8, borderRadius: 100, border: 'none', background: i === currentStep ? '#4F46E5' : i < currentStep ? 'rgba(79,70,229,0.4)' : 'rgba(255,255,255,0.15)', cursor: 'pointer', transition: 'all 0.25s cubic-bezier(0.34,1.56,0.64,1)', padding: 0 }} />
+          ))}
+        </div>
+
+        {/* Bouton suivant — CTA principal */}
+        <button
+          onClick={handleNext}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 28px', background: isLast ? '#10B981' : '#4F46E5', border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s', boxShadow: isLast ? '0 0 20px rgba(16,185,129,0.3)' : '0 0 20px rgba(79,70,229,0.3)' }}
+        >
+          {isLast ? '🎉 Terminer' : 'Suivant →'}
+        </button>
+      </div>
     </div>
   )
 }

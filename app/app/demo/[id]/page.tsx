@@ -1,13 +1,16 @@
 import { notFound } from 'next/navigation'
-import { supabase, type Demo } from '@/lib/supabase'
+import { supabase, type Demo, type DemoLink } from '@/lib/supabase'
 import DemoViewer from '@/components/DemoViewer'
 
-// Incrémente le view_count à chaque visite
-async function incrementView(id: string) {
-  await supabase.rpc('increment_view_count', { demo_id: id })
-}
+export const dynamic = 'force-dynamic'
 
-export default async function DemoPage({ params }: { params: { id: string } }) {
+export default async function DemoPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string }
+  searchParams: { l?: string }
+}) {
   const { data, error } = await supabase
     .from('demos')
     .select('*')
@@ -15,31 +18,47 @@ export default async function DemoPage({ params }: { params: { id: string } }) {
     .eq('published', true)
     .single()
 
-  if (error || !data) {
-    notFound()
+  if (error || !data) notFound()
+
+  supabase.rpc('increment_view_count', { demo_id: params.id }).catch(() => {})
+
+  let linkData: DemoLink | null = null
+  if (searchParams.l) {
+    const { data: link } = await supabase
+      .from('demo_links')
+      .select('*')
+      .eq('id', searchParams.l)
+      .eq('demo_id', params.id)
+      .single()
+    linkData = link ?? null
   }
 
-  // Fire & forget — n'attend pas la réponse
-  incrementView(params.id).catch(() => {})
+  const vars: Record<string, string> = {
+    ...(linkData?.custom_vars ?? {}),
+    ...(linkData?.viewer_name    ? { name: linkData.viewer_name }       : {}),
+    ...(linkData?.viewer_company ? { company: linkData.viewer_company } : {}),
+  }
 
   return (
     <>
       <style>{`
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background: #080808; }
-
         @keyframes ping {
           0%   { transform: scale(0.8); opacity: 0.3; }
           70%  { transform: scale(2.2); opacity: 0; }
           100% { transform: scale(2.2); opacity: 0; }
         }
-
         @keyframes tooltipIn {
           from { opacity: 0; transform: translate(-50%, -4px); }
           to   { opacity: 1; transform: translate(-50%, -10px); }
         }
       `}</style>
-      <DemoViewer demo={data as Demo} />
+      <DemoViewer
+        demo={data as Demo}
+        linkId={searchParams.l}
+        vars={vars}
+      />
     </>
   )
 }

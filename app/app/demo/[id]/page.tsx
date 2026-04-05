@@ -20,7 +20,7 @@ export default async function DemoPage({
 
   if (error || !data) notFound()
 
-  supabase.rpc('increment_view_count', { demo_id: params.id }).catch(() => {})
+  try { await supabase.rpc('increment_view_count', { demo_id: params.id }) } catch {}
 
   let linkData: DemoLink | null = null
   if (searchParams.l) {
